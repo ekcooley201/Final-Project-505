@@ -48,7 +48,7 @@
 </div>
 
 <div id="screen-leaderboard" class="screen">
-    <h2>Leaderboard</h2>
+    <h2 id="leaderboardTitle">Leaderboard</h2>
     <div class="leaderboard-container">
         <canvas id="mainChart"></canvas>
     </div>
@@ -85,7 +85,7 @@
         clicksRemaining: 20,
         round1Score: 0,
         round2Score: 0,
-        historicalData: [],
+        historicalData: [], // Will only contain data from URL
         masterRewardMap: [] 
     };
 
@@ -103,13 +103,13 @@
         state.masterRewardMap = rewards;
     }
 
-    function startExperiment() {
+    async function startExperiment() {
         let inputId = document.getElementById('participantId').value;
-        state.participantId = inputId || Math.random().toString(36).substring(2, 8).toUpperCase();
+        state.participantId = inputId || "User_" + Math.random().toString(36).substring(2, 7).toUpperCase();
         state.condition = Math.random() < 0.5 ? 1 : 2;
         
         generateMasterMap();
-        fetchHistoricalData();
+        await fetchHistoricalData(); // Wait for real data before moving on
         nextScreen();
     }
 
@@ -142,6 +142,7 @@
         else if (s === 4) startRound(1);
         else if (s === 5) {
             showScreen('screen-leaderboard');
+            document.getElementById('leaderboardTitle').innerText = "Current Leaderboard";
             renderChart('mainChart', true);
             document.getElementById('leaderboardNextBtn').style.display = 'none';
             setTimeout(() => { document.getElementById('leaderboardNextBtn').style.display = 'inline-block'; }, 30000);
@@ -160,6 +161,7 @@
         else if (s === 8) startRound(2);
         else if (s === 9) {
             showScreen('screen-leaderboard');
+            document.getElementById('leaderboardTitle').innerText = "Final Leaderboard";
             renderChart('mainChart', true);
             document.getElementById('finalMessage').innerText = "Thank you for your participation!";
             saveData();
@@ -215,22 +217,29 @@
     async function fetchHistoricalData() {
         try {
             const response = await fetch(WEB_APP_URL);
-            state.historicalData = await response.json();
+            const data = await response.json();
+            // Ensure data is an array
+            state.historicalData = Array.isArray(data) ? data : [];
         } catch (e) {
-            state.historicalData = [
-                {id: "ID_882", round2Score: 230}, {id: "ID_104", round2Score: 215},
-                {id: "ID_592", round2Score: 180}, {id: "ID_331", round2Score: 260}
-            ];
+            console.error("Fetch failed, starting with empty leaderboard:", e);
+            state.historicalData = []; 
         }
     }
 
     function renderChart(canvasId, showUser) {
         const canvas = document.getElementById(canvasId);
         const ctx = canvas.getContext('2d');
+        
+        // Use only data from the API
         let combined = [...state.historicalData];
         let userScore = state.round === 2 ? state.round2Score : state.round1Score;
-        if (showUser) combined.push({ id: "YOU", round2Score: userScore });
-        combined.sort((a, b) => b.round2Score - a.round2Score);
+        
+        if (showUser) {
+            combined.push({ id: state.participantId, round2Score: userScore, isUser: true });
+        }
+
+        // Sort based on Round 2 score
+        combined.sort((a, b) => (b.round2Score || 0) - (a.round2Score || 0));
 
         if (window.myCharts && window.myCharts[canvasId]) window.myCharts[canvasId].destroy();
         if (!window.myCharts) window.myCharts = {};
@@ -240,12 +249,15 @@
             data: {
                 labels: combined.map(d => d.id),
                 datasets: [{
-                    label: 'Total Scores (Round 2)',
-                    data: combined.map(d => d.round2Score),
-                    backgroundColor: combined.map(d => d.id === "YOU" ? "red" : "rgba(54, 162, 235, 0.6)")
+                    label: 'Round 2 Total Score',
+                    data: combined.map(d => d.round2Score || 0),
+                    backgroundColor: combined.map(d => d.isUser ? "red" : "rgba(54, 162, 235, 0.6)")
                 }]
             },
-            options: { maintainAspectRatio: false }
+            options: { 
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true } }
+            }
         });
     }
 
@@ -256,7 +268,12 @@
             round1: state.round1Score,
             round2: state.round2Score
         };
-        fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+        fetch(WEB_APP_URL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload) 
+        });
     }
 </script>
 </body>
