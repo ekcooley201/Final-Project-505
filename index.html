@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Psychology Experiment Task</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: sans-serif; overflow: hidden; background: #f0f0f0; }
+        .screen { display: none; width: 100vw; height: 100vh; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; box-sizing: border-box; }
+        .active { display: flex; }
+        canvas { background: white; border: 1px solid #ccc; max-width: 90%; max-height: 70%; }
+        .grid-container { display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(6, 1fr); gap: 5px; width: 80vh; height: 80vh; max-width: 95vw; max-height: 95vw; }
+        .square { background: #888; display: flex; justify-content: center; align-items: center; font-weight: bold; cursor: pointer; color: white; border-radius: 4px; font-size: 1.5rem; transition: background 0.3s; }
+        .square.revealed { background: #4CAF50; }
+        .leaderboard-container { width: 80%; height: 60%; }
+        button { padding: 15px 30px; font-size: 1.2rem; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; margin-top: 20px; }
+        input { padding: 10px; font-size: 1.1rem; width: 250px; margin-bottom: 10px; }
+        .marker-line { border-top: 3px solid red; width: 100%; margin: 10px 0; position: relative; }
+        .marker-line::after { content: 'YOUR SCORE'; position: absolute; right: 0; top: -20px; color: red; font-weight: bold; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+
+<div id="screen1" class="screen active">
+    <h1>Welcome to the Reward Task</h1>
+    <p>Please enter your ID to begin:</p>
+    <input type="text" id="participantId" placeholder="Participant ID">
+    <button onclick="startExperiment()">Start Task</button>
+</div>
+
+<div id="screen2" class="screen">
+    <canvas id="avatarCanvas"></canvas>
+    <div id="avatarText" style="max-width: 600px; margin-top: 20px;"></div>
+    <button onclick="nextScreen()">Next</button>
+</div>
+
+<div id="screen3" class="screen">
+    <div id="instructionText" style="max-width: 700px; margin-bottom: 20px;"></div>
+    <div id="cond2Leaderboard" class="leaderboard-container" style="display:none;">
+        <canvas id="preGameChart"></canvas>
+    </div>
+    <button id="startRoundBtn" onclick="nextScreen()">Next</button>
+</div>
+
+<div id="screen-game" class="screen">
+    <div id="grid" class="grid-container"></div>
+</div>
+
+<div id="screen-leaderboard" class="screen">
+    <h2>Leaderboard</h2>
+    <div class="leaderboard-container">
+        <canvas id="mainChart"></canvas>
+    </div>
+    <div id="finalMessage" style="margin-top:20px; font-weight:bold;"></div>
+    <button id="leaderboardNextBtn" style="display:none;" onclick="nextScreen()">Continue</button>
+</div>
+
+<div id="screen6" class="screen">
+    <h2>Please wait...</h2>
+    <h1 id="distractorTimer">15</h1>
+</div>
+
+<div id="screen7" class="screen">
+    <h1>Round Two</h1>
+    <p>You will now play round two of the game. You have twenty clicks and five minutes total.</p>
+    <button onclick="nextScreen()">Start Round 2</button>
+</div>
+
+<script>
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz9J9pVm4M1EI040Hk7XvqZMyPCGog1uWlAaZC-eDG94H6E9mBlHXQC_ydVGNSJOOyH/exec";
+    
+    let state = {
+        participantId: "",
+        condition: 0,
+        currentScreen: 1,
+        round: 1,
+        clicksRemaining: 20,
+        totalScore: 0,
+        round1Score: 0,
+        round2Score: 0,
+        historicalData: []
+    };
+
+    // 1. Initialize Experiment
+    function startExperiment() {
+        let inputId = document.getElementById('participantId').value;
+        state.participantId = inputId || Math.random().toString(36).substring(2, 8).toUpperCase();
+        state.condition = Math.random() < 0.5 ? 1 : 2;
+        
+        fetchHistoricalData();
+        nextScreen();
+    }
+
+    function nextScreen() {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        state.currentScreen++;
+        
+        // Logic for screen transitions based on condition
+        renderScreen();
+    }
+
+    function renderScreen() {
+        const s = state.currentScreen;
+        
+        if (s === 2) {
+            showScreen('screen2');
+            drawAvatar();
+            document.getElementById('avatarText').innerText = "Imagine this is you. You are a college student trying to gain rewards in your everyday life. Rewards have different point values in your life. For example, a test score may be worth a different amount of points than a night out with your friends. In this game, there are rewards with set point values for you to find.";
+        } 
+        else if (s === 3) {
+            showScreen('screen3');
+            document.getElementById('instructionText').innerText = "On the next screen, you will see a 6x6 grid with 36 spots. There are rewards randomly placed under the squares. The rewards are as follows: there are 18 five-point rewards, 12 ten-point rewards, 4 will be fifteen-point rewards, and 2 will be twenty-point rewards. You have five minutes to click 20 times. You can click any square as many times as you want, but you only get 20 clicks total. Whichever rewards you find will be given to your avatar. In total, you will play two rounds of the game with twenty clicks per round.";
+            
+            if (state.condition === 2) {
+                document.getElementById('cond2Leaderboard').style.display = 'block';
+                document.getElementById('startRoundBtn').style.display = 'none';
+                renderChart('preGameChart', false);
+                setTimeout(() => {
+                    document.getElementById('startRoundBtn').style.display = 'inline-block';
+                    document.getElementById('startRoundBtn').innerText = "Click to Start";
+                }, 20000);
+            }
+        } 
+        else if (s === 4) {
+            startRound(1);
+        }
+        else if (s === 5) {
+            showScreen('screen-leaderboard');
+            renderChart('mainChart', true);
+            document.getElementById('leaderboardNextBtn').style.display = 'none';
+            setTimeout(() => {
+                document.getElementById('leaderboardNextBtn').style.display = 'inline-block';
+            }, 30000);
+        }
+        else if (s === 6) {
+            showScreen('screen6');
+            let timeLeft = 15;
+            const timerObj = document.getElementById('distractorTimer');
+            const interval = setInterval(() => {
+                timeLeft--;
+                timerObj.innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(interval);
+                    nextScreen();
+                }
+            }, 1000);
+        }
+        else if (s === 7) {
+            showScreen('screen7');
+        }
+        else if (s === 8) {
+            startRound(2);
+        }
+        else if (s === 9) {
+            showScreen('screen-leaderboard');
+            renderChart('mainChart', true);
+            document.getElementById('finalMessage').innerText = "Thank you for your participation!";
+            document.getElementById('leaderboardNextBtn').style.display = 'none';
+            saveData();
+        }
+    }
+
+    function showScreen(id) {
+        document.getElementById(id).classList.add('active');
+    }
+
+    // Avatar Drawing (Gender Neutral)
+    function drawAvatar() {
+        const canvas = document.getElementById('avatarCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 300; canvas.height = 300;
+        ctx.beginPath();
+        ctx.arc(150, 80, 50, 0, Math.PI * 2); // Head
+        ctx.fillStyle = "#e0ac69"; ctx.fill();
+        ctx.fillRect(120, 130, 60, 120); // Body
+        ctx.stroke();
+    }
+
+    // Game Logic
+    function startRound(num) {
+        state.round = num;
+        state.clicksRemaining = 20;
+        showScreen('screen-game');
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        
+        // Setup timer (5 mins = 300000ms) - hidden
+        setTimeout(() => { if(state.clicksRemaining > 0) forceEndRound(); }, 300000);
+
+        const rewards = [...Array(18).fill(5), ...Array(12).fill(10), ...Array(4).fill(15), ...Array(2).fill(20)];
+        shuffle(rewards);
+
+        rewards.forEach(val => {
+            const sq = document.createElement('div');
+            sq.className = 'square';
+            sq.onclick = () => {
+                if (state.clicksRemaining > 0) {
+                    state.clicksRemaining--;
+                    if (state.round === 1) state.round1Score += val;
+                    else state.round2Score += val;
+                    
+                    sq.innerText = val;
+                    sq.classList.add('revealed');
+                    setTimeout(() => {
+                        sq.innerText = '';
+                        sq.classList.remove('revealed');
+                    }, 800);
+
+                    if (state.clicksRemaining === 0) setTimeout(nextScreen, 1000);
+                }
+            };
+            grid.appendChild(sq);
+        });
+    }
+
+    function forceEndRound() {
+        alert("Time is up for this round!");
+        nextScreen();
+    }
+
+    function shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    // Leaderboard Logic
+    async function fetchHistoricalData() {
+        try {
+            const response = await fetch(WEB_APP_URL);
+            const data = await response.json();
+            state.historicalData = data;
+        } catch (e) {
+            // Fallback mock data if API fails or is empty
+            state.historicalData = [
+                {id: "P1", round2Score: 180}, {id: "P2", round2Score: 220},
+                {id: "P3", round2Score: 150}, {id: "P4", round2Score: 280}
+            ];
+        }
+    }
+
+    function renderChart(canvasId, showUser) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        
+        // Create combined data
+        let combined = [...state.historicalData];
+        let userScore = state.round === 2 ? state.round2Score : state.round1Score;
+        
+        if (showUser) {
+            combined.push({ id: "YOU", round2Score: userScore });
+        }
+
+        // Sort by Round 2 score descending
+        combined.sort((a, b) => b.round2Score - a.round2Score);
+
+        const labels = combined.map(d => d.id);
+        const scores = combined.map(d => d.round2Score);
+        const backgroundColors = labels.map(l => l === "YOU" ? "red" : "rgba(54, 162, 235, 0.5)");
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Total Score (Round 2)',
+                    data: scores,
+                    backgroundColor: backgroundColors
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
+
+    function saveData() {
+        const payload = {
+            id: state.participantId,
+            condition: state.condition,
+            round1: state.round1Score,
+            round2: state.round2Score
+        };
+        fetch(WEB_APP_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify(payload)
+        });
+    }
+</script>
+</body>
+</html>
