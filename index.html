@@ -69,7 +69,8 @@
 </div>
 
 <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz9J9pVm4M1EI040Hk7XvqZMyPCGog1uWlAaZC-eDG94H6E9mBlHXQC_ydVGNSJOOyH/exec";
+    // UPDATED WEB APP URL
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx6ZmFhniLJLeD16MMGmnd9QJj1uZoK_I1EKrfGW5OxEoECdIBDTo_OzbN8XShy3yZ5/exec";
     
     const REWARD_DATA = {
         20: "Night out with friends",
@@ -90,7 +91,6 @@
         masterRewardMap: [] 
     };
 
-    // Initial Load: Disable start until real data is fetched
     window.onload = () => {
         const startBtn = document.getElementById('startBtn');
         startBtn.disabled = true;
@@ -104,10 +104,9 @@
         try {
             const response = await fetch(WEB_APP_URL);
             const data = await response.json();
-            // Data from your doGet should be an array of objects: {id, round2Score}
             state.historicalData = Array.isArray(data) ? data : [];
         } catch (e) {
-            console.error("Leaderboard fetch failed. Starting clean.");
+            console.error("Leaderboard fetch failed.");
             state.historicalData = []; 
         }
     }
@@ -119,7 +118,6 @@
             ...Array(4).fill(15), 
             ...Array(2).fill(20)
         ];
-        // Fisher-Yates shuffle
         for (let i = rewards.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [rewards[i], rewards[j]] = [rewards[j], rewards[i]];
@@ -127,14 +125,9 @@
         state.masterRewardMap = rewards;
     }
 
-    async function startExperiment() {
+    function startExperiment() {
         let inputField = document.getElementById('participantId');
-        if (!inputField.value.trim()) {
-            state.participantId = "User_" + Math.random().toString(36).substring(2, 7).toUpperCase();
-        } else {
-            state.participantId = inputField.value.trim();
-        }
-        
+        state.participantId = inputField.value.trim() || "User_" + Math.random().toString(36).substring(2, 7).toUpperCase();
         state.condition = Math.random() < 0.5 ? 1 : 2;
         generateMasterMap();
         nextScreen();
@@ -191,7 +184,7 @@
             document.getElementById('leaderboardTitle').innerText = "Final Leaderboard";
             renderChart('mainChart', true);
             document.getElementById('finalMessage').innerText = "Thank you for your participation!";
-            saveData(); // Final save happens here
+            saveData(); 
         }
     }
 
@@ -212,8 +205,7 @@
         showScreen('screen-game');
         const grid = document.getElementById('grid');
         grid.innerHTML = '';
-        setTimeout(() => { if(state.clicksRemaining > 0) nextScreen(); }, 300000);
-
+        
         state.masterRewardMap.forEach(val => {
             const sq = document.createElement('div');
             sq.className = 'square';
@@ -222,9 +214,15 @@
                     state.clicksRemaining--;
                     if (state.round === 1) state.round1Score += val;
                     else state.round2Score += val;
+                    
                     sq.innerHTML = `<div class="reward-points">${val}</div><div class="reward-desc">${REWARD_DATA[val]}</div>`;
                     sq.classList.add('revealed');
-                    setTimeout(() => { sq.innerHTML = ''; sq.classList.remove('revealed'); }, 1200);
+                    
+                    setTimeout(() => {
+                        sq.innerHTML = '';
+                        sq.classList.remove('revealed');
+                    }, 1200);
+
                     if (state.clicksRemaining === 0) setTimeout(nextScreen, 1500);
                 }
             };
@@ -269,23 +267,20 @@
     }
 
     function saveData() {
-        // payload keys must match your JSON.parse(e.postData.contents) logic in Apps Script
-        const payload = {
-            Participant_ID: state.participantId,
-            Condition_Number: state.condition,
-            Round_Number: state.round,
-            Total_Score: state.round2Score,
-            Reaction_Time: "N/A"
-        };
+        const params = new URLSearchParams();
+        params.append('Participant_ID', state.participantId);
+        params.append('Condition_Number', state.condition);
+        params.append('Round_Number', state.round);
+        params.append('Total_Score', state.round2Score);
+        params.append('Reaction_Time', "N/A");
 
         fetch(WEB_APP_URL, { 
             method: 'POST', 
             mode: 'no-cors', 
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload) 
+            body: params 
         }).then(() => {
-            console.log("Data Sent");
-        }).catch(e => console.error("Save Error", e));
+            console.log("Data packet sent.");
+        }).catch(e => console.error("Save Error:", e));
     }
 </script>
 </body>
