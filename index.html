@@ -10,13 +10,14 @@
         .screen { display: none; width: 100vw; height: 100vh; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; box-sizing: border-box; }
         .active { display: flex; }
         canvas { background: white; border: 1px solid #ccc; max-width: 90%; max-height: 70%; }
-        .grid-container { display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(6, 1fr); gap: 5px; width: 80vh; height: 80vh; max-width: 95vw; max-height: 95vw; }
-        .square { background: #888; display: flex; justify-content: center; align-items: center; font-weight: bold; cursor: pointer; color: white; border-radius: 4px; font-size: 1.5rem; transition: background 0.3s; }
+        .grid-container { display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(6, 1fr); gap: 5px; width: 90vh; height: 90vh; max-width: 95vw; max-height: 95vw; }
+        .square { background: #888; display: flex; flex-direction: column; justify-content: center; align-items: center; font-weight: bold; cursor: pointer; color: white; border-radius: 4px; padding: 5px; box-sizing: border-box; transition: background 0.3s; }
         .square.revealed { background: #4CAF50; }
+        .reward-points { font-size: 1.4rem; margin-bottom: 2px; }
+        .reward-desc { font-size: 0.7rem; line-height: 1.1; font-weight: normal; }
         .leaderboard-container { width: 80%; height: 60%; }
         button { padding: 15px 30px; font-size: 1.2rem; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; margin-top: 20px; }
         input { padding: 10px; font-size: 1.1rem; width: 250px; margin-bottom: 10px; }
-        .marker-line { border-top: 3px solid red; width: 100%; margin: 10px 0; position: relative; }
     </style>
 </head>
 <body>
@@ -69,6 +70,13 @@
 <script>
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz9J9pVm4M1EI040Hk7XvqZMyPCGog1uWlAaZC-eDG94H6E9mBlHXQC_ydVGNSJOOyH/exec";
     
+    const REWARD_DATA = {
+        20: "Night out with friends",
+        15: "Giftcard to favorite place to eat on campus",
+        10: "You get an A in a course",
+        5: "You got an A on an assignment"
+    };
+
     let state = {
         participantId: "",
         condition: 0,
@@ -78,18 +86,16 @@
         round1Score: 0,
         round2Score: 0,
         historicalData: [],
-        masterRewardMap: [] // To keep rewards identical across rounds
+        masterRewardMap: [] 
     };
 
     function generateMasterMap() {
-        // Create the set distribution
         const rewards = [
             ...Array(18).fill(5), 
             ...Array(12).fill(10), 
             ...Array(4).fill(15), 
             ...Array(2).fill(20)
         ];
-        // Shuffle once at the start of the experiment
         for (let i = rewards.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [rewards[i], rewards[j]] = [rewards[j], rewards[i]];
@@ -102,7 +108,7 @@
         state.participantId = inputId || Math.random().toString(36).substring(2, 8).toUpperCase();
         state.condition = Math.random() < 0.5 ? 1 : 2;
         
-        generateMasterMap(); // Locked in for the whole session
+        generateMasterMap();
         fetchHistoricalData();
         nextScreen();
     }
@@ -115,7 +121,6 @@
 
     function renderScreen() {
         const s = state.currentScreen;
-        
         if (s === 2) {
             showScreen('screen2');
             drawAvatar();
@@ -124,7 +129,6 @@
         else if (s === 3) {
             showScreen('screen3');
             document.getElementById('instructionText').innerText = "On the next screen, you will see a 6x6 grid with 36 spots. There are rewards randomly placed under the squares. The rewards are as follows: there are 18 five-point rewards, 12 ten-point rewards, 4 will be fifteen-point rewards, and 2 will be twenty-point rewards. You have five minutes to click 20 times. You can click any square as many times as you want, but you only get 20 clicks total. Whichever rewards you find will be given to your avatar. In total, you will play two rounds of the game with twenty clicks per round.";
-            
             if (state.condition === 2) {
                 document.getElementById('cond2Leaderboard').style.display = 'block';
                 document.getElementById('startRoundBtn').style.display = 'none';
@@ -175,4 +179,85 @@
         ctx.stroke();
     }
 
-    function start
+    function startRound(num) {
+        state.round = num;
+        state.clicksRemaining = 20;
+        showScreen('screen-game');
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        
+        setTimeout(() => { if(state.clicksRemaining > 0) nextScreen(); }, 300000);
+
+        state.masterRewardMap.forEach(val => {
+            const sq = document.createElement('div');
+            sq.className = 'square';
+            sq.onclick = () => {
+                if (state.clicksRemaining > 0) {
+                    state.clicksRemaining--;
+                    if (state.round === 1) state.round1Score += val;
+                    else state.round2Score += val;
+                    
+                    sq.innerHTML = `<div class="reward-points">${val}</div><div class="reward-desc">${REWARD_DATA[val]}</div>`;
+                    sq.classList.add('revealed');
+                    
+                    setTimeout(() => {
+                        sq.innerHTML = '';
+                        sq.classList.remove('revealed');
+                    }, 1200);
+
+                    if (state.clicksRemaining === 0) setTimeout(nextScreen, 1500);
+                }
+            };
+            grid.appendChild(sq);
+        });
+    }
+
+    async function fetchHistoricalData() {
+        try {
+            const response = await fetch(WEB_APP_URL);
+            state.historicalData = await response.json();
+        } catch (e) {
+            state.historicalData = [
+                {id: "ID_882", round2Score: 230}, {id: "ID_104", round2Score: 215},
+                {id: "ID_592", round2Score: 180}, {id: "ID_331", round2Score: 260}
+            ];
+        }
+    }
+
+    function renderChart(canvasId, showUser) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        let combined = [...state.historicalData];
+        let userScore = state.round === 2 ? state.round2Score : state.round1Score;
+        if (showUser) combined.push({ id: "YOU", round2Score: userScore });
+        combined.sort((a, b) => b.round2Score - a.round2Score);
+
+        if (window.myCharts && window.myCharts[canvasId]) window.myCharts[canvasId].destroy();
+        if (!window.myCharts) window.myCharts = {};
+
+        window.myCharts[canvasId] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: combined.map(d => d.id),
+                datasets: [{
+                    label: 'Total Scores (Round 2)',
+                    data: combined.map(d => d.round2Score),
+                    backgroundColor: combined.map(d => d.id === "YOU" ? "red" : "rgba(54, 162, 235, 0.6)")
+                }]
+            },
+            options: { maintainAspectRatio: false }
+        });
+    }
+
+    function saveData() {
+        const payload = {
+            id: state.participantId,
+            condition: state.condition,
+            round1: state.round1Score,
+            round2: state.round2Score
+        };
+        fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+    }
+</script>
+</body>
+</html>
