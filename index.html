@@ -86,11 +86,11 @@
         clicksRemaining: 20,
         round1Score: 0,
         round2Score: 0,
-        historicalData: [], // ONLY real data goes here
+        historicalData: [], 
         masterRewardMap: [] 
     };
 
-    // Initialize: Fetch data immediately on load
+    // Initial Load: Disable start until real data is fetched
     window.onload = () => {
         const startBtn = document.getElementById('startBtn');
         startBtn.disabled = true;
@@ -104,10 +104,10 @@
         try {
             const response = await fetch(WEB_APP_URL);
             const data = await response.json();
-            // Assign ONLY the data from the web app. If empty/error, remains empty array.
+            // Data from your doGet should be an array of objects: {id, round2Score}
             state.historicalData = Array.isArray(data) ? data : [];
         } catch (e) {
-            console.error("Connection error. Leaderboard will start empty.");
+            console.error("Leaderboard fetch failed. Starting clean.");
             state.historicalData = []; 
         }
     }
@@ -119,6 +119,7 @@
             ...Array(4).fill(15), 
             ...Array(2).fill(20)
         ];
+        // Fisher-Yates shuffle
         for (let i = rewards.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [rewards[i], rewards[j]] = [rewards[j], rewards[i]];
@@ -126,9 +127,14 @@
         state.masterRewardMap = rewards;
     }
 
-    function startExperiment() {
-        let inputId = document.getElementById('participantId').value;
-        state.participantId = inputId || "User_" + Math.random().toString(36).substring(2, 7).toUpperCase();
+    async function startExperiment() {
+        let inputField = document.getElementById('participantId');
+        if (!inputField.value.trim()) {
+            state.participantId = "User_" + Math.random().toString(36).substring(2, 7).toUpperCase();
+        } else {
+            state.participantId = inputField.value.trim();
+        }
+        
         state.condition = Math.random() < 0.5 ? 1 : 2;
         generateMasterMap();
         nextScreen();
@@ -185,7 +191,7 @@
             document.getElementById('leaderboardTitle').innerText = "Final Leaderboard";
             renderChart('mainChart', true);
             document.getElementById('finalMessage').innerText = "Thank you for your participation!";
-            saveData();
+            saveData(); // Final save happens here
         }
     }
 
@@ -229,11 +235,7 @@
     function renderChart(canvasId, showUser) {
         const canvas = document.getElementById(canvasId);
         const ctx = canvas.getContext('2d');
-        
-        // Combined list starts with REAL historical data only
         let displayList = [...state.historicalData];
-        
-        // Score to display for the current user
         let userCurrentScore = state.round === 2 ? state.round2Score : state.round1Score;
         
         if (showUser) {
@@ -244,7 +246,6 @@
             });
         }
 
-        // Sort descending by Round 2 score
         displayList.sort((a, b) => (b.round2Score || 0) - (a.round2Score || 0));
 
         if (window.myCharts && window.myCharts[canvasId]) window.myCharts[canvasId].destroy();
@@ -268,18 +269,23 @@
     }
 
     function saveData() {
+        // payload keys must match your JSON.parse(e.postData.contents) logic in Apps Script
         const payload = {
-            id: state.participantId,
-            condition: state.condition,
-            round1: state.round1Score,
-            round2: state.round2Score
+            Participant_ID: state.participantId,
+            Condition_Number: state.condition,
+            Round_Number: state.round,
+            Total_Score: state.round2Score,
+            Reaction_Time: "N/A"
         };
+
         fetch(WEB_APP_URL, { 
             method: 'POST', 
             mode: 'no-cors', 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload) 
-        });
+        }).then(() => {
+            console.log("Data Sent");
+        }).catch(e => console.error("Save Error", e));
     }
 </script>
 </body>
