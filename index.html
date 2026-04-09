@@ -15,8 +15,9 @@
         .square.revealed { background: #4CAF50; }
         .reward-points { font-size: 1.4rem; margin-bottom: 2px; }
         .reward-desc { font-size: 0.7rem; line-height: 1.1; font-weight: normal; }
-        .leaderboard-container { width: 80%; height: 60%; }
+        .leaderboard-container { width: 80%; height: 60%; position: relative; }
         button { padding: 15px 30px; font-size: 1.2rem; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; margin-top: 20px; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
         input { padding: 10px; font-size: 1.1rem; width: 250px; margin-bottom: 10px; }
     </style>
 </head>
@@ -26,7 +27,7 @@
     <h1>Welcome to the Reward Task</h1>
     <p>Please enter your ID to begin:</p>
     <input type="text" id="participantId" placeholder="Participant ID">
-    <button onclick="startExperiment()">Start Task</button>
+    <button id="startBtn" onclick="startExperiment()">Loading Data...</button>
 </div>
 
 <div id="screen2" class="screen">
@@ -85,9 +86,31 @@
         clicksRemaining: 20,
         round1Score: 0,
         round2Score: 0,
-        historicalData: [], // Will only contain data from URL
+        historicalData: [], // ONLY real data goes here
         masterRewardMap: [] 
     };
+
+    // Initialize: Fetch data immediately on load
+    window.onload = () => {
+        const startBtn = document.getElementById('startBtn');
+        startBtn.disabled = true;
+        fetchHistoricalData().then(() => {
+            startBtn.disabled = false;
+            startBtn.innerText = "Start Task";
+        });
+    };
+
+    async function fetchHistoricalData() {
+        try {
+            const response = await fetch(WEB_APP_URL);
+            const data = await response.json();
+            // Assign ONLY the data from the web app. If empty/error, remains empty array.
+            state.historicalData = Array.isArray(data) ? data : [];
+        } catch (e) {
+            console.error("Connection error. Leaderboard will start empty.");
+            state.historicalData = []; 
+        }
+    }
 
     function generateMasterMap() {
         const rewards = [
@@ -103,13 +126,11 @@
         state.masterRewardMap = rewards;
     }
 
-    async function startExperiment() {
+    function startExperiment() {
         let inputId = document.getElementById('participantId').value;
         state.participantId = inputId || "User_" + Math.random().toString(36).substring(2, 7).toUpperCase();
         state.condition = Math.random() < 0.5 ? 1 : 2;
-        
         generateMasterMap();
-        await fetchHistoricalData(); // Wait for real data before moving on
         nextScreen();
     }
 
@@ -174,11 +195,9 @@
         const canvas = document.getElementById('avatarCanvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 300; canvas.height = 300;
-        ctx.beginPath();
-        ctx.arc(150, 80, 50, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(150, 80, 50, 0, Math.PI * 2);
         ctx.fillStyle = "#e0ac69"; ctx.fill();
-        ctx.fillRect(120, 130, 60, 120);
-        ctx.stroke();
+        ctx.fillRect(120, 130, 60, 120); ctx.stroke();
     }
 
     function startRound(num) {
@@ -187,7 +206,6 @@
         showScreen('screen-game');
         const grid = document.getElementById('grid');
         grid.innerHTML = '';
-        
         setTimeout(() => { if(state.clicksRemaining > 0) nextScreen(); }, 300000);
 
         state.masterRewardMap.forEach(val => {
@@ -198,15 +216,9 @@
                     state.clicksRemaining--;
                     if (state.round === 1) state.round1Score += val;
                     else state.round2Score += val;
-                    
                     sq.innerHTML = `<div class="reward-points">${val}</div><div class="reward-desc">${REWARD_DATA[val]}</div>`;
                     sq.classList.add('revealed');
-                    
-                    setTimeout(() => {
-                        sq.innerHTML = '';
-                        sq.classList.remove('revealed');
-                    }, 1200);
-
+                    setTimeout(() => { sq.innerHTML = ''; sq.classList.remove('revealed'); }, 1200);
                     if (state.clicksRemaining === 0) setTimeout(nextScreen, 1500);
                 }
             };
@@ -214,32 +226,26 @@
         });
     }
 
-    async function fetchHistoricalData() {
-        try {
-            const response = await fetch(WEB_APP_URL);
-            const data = await response.json();
-            // Ensure data is an array
-            state.historicalData = Array.isArray(data) ? data : [];
-        } catch (e) {
-            console.error("Fetch failed, starting with empty leaderboard:", e);
-            state.historicalData = []; 
-        }
-    }
-
     function renderChart(canvasId, showUser) {
         const canvas = document.getElementById(canvasId);
         const ctx = canvas.getContext('2d');
         
-        // Use only data from the API
-        let combined = [...state.historicalData];
-        let userScore = state.round === 2 ? state.round2Score : state.round1Score;
+        // Combined list starts with REAL historical data only
+        let displayList = [...state.historicalData];
+        
+        // Score to display for the current user
+        let userCurrentScore = state.round === 2 ? state.round2Score : state.round1Score;
         
         if (showUser) {
-            combined.push({ id: state.participantId, round2Score: userScore, isUser: true });
+            displayList.push({ 
+                id: state.participantId + " (YOU)", 
+                round2Score: userCurrentScore, 
+                isUser: true 
+            });
         }
 
-        // Sort based on Round 2 score
-        combined.sort((a, b) => (b.round2Score || 0) - (a.round2Score || 0));
+        // Sort descending by Round 2 score
+        displayList.sort((a, b) => (b.round2Score || 0) - (a.round2Score || 0));
 
         if (window.myCharts && window.myCharts[canvasId]) window.myCharts[canvasId].destroy();
         if (!window.myCharts) window.myCharts = {};
@@ -247,11 +253,11 @@
         window.myCharts[canvasId] = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: combined.map(d => d.id),
+                labels: displayList.map(d => d.id),
                 datasets: [{
-                    label: 'Round 2 Total Score',
-                    data: combined.map(d => d.round2Score || 0),
-                    backgroundColor: combined.map(d => d.isUser ? "red" : "rgba(54, 162, 235, 0.6)")
+                    label: 'Scores',
+                    data: displayList.map(d => d.round2Score || 0),
+                    backgroundColor: displayList.map(d => d.isUser ? "red" : "rgba(54, 162, 235, 0.6)")
                 }]
             },
             options: { 
